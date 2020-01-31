@@ -4,16 +4,23 @@ class SearchMapPlaceWidget extends StatefulWidget {
   SearchMapPlaceWidget({
     @required this.apiKey,
     this.placeholder = 'Search',
-    this.icon = Icons.search,
-    this.iconColor = Colors.blue,
+    this.icon = Icons.cancel,
+    this.iconColor,
     this.onSelected,
     this.onSearch,
     this.language = 'en',
     this.location,
     this.radius,
     this.strictBounds = false,
+    this.showOnSearchButton = true,
+    this.showOnClearSearchButton = true,
+    this.onClearSearch,
   }) : assert((location == null && radius == null) ||
             (location != null && radius != null));
+
+  final bool showOnSearchButton;
+  final bool showOnClearSearchButton;
+  final Function onClearSearch;
 
   /// API Key of the Google Maps API.
   final String apiKey;
@@ -70,7 +77,8 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
   Place _selectedPlace;
   Geocoding geocode;
 
-  bool proccess = false;
+  BehaviorSubject<String> searchSubject;
+  StreamSubscription searchSubscription;
 
   @override
   void initState() {
@@ -94,7 +102,38 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
         parent: _animationController,
       ),
     );
+
+    searchSubject = BehaviorSubject<String>();
+    searchSubscription = searchSubject.stream
+        .throttle((_) => TimerStream(true, Duration(milliseconds: 300)))
+        .distinct()
+        .switchMap((t) => (t.length > 0)
+            ? Stream.fromFuture(_autoCompletePlaces(t))
+            : Stream.value(List<dynamic>()))
+        .listen((predictions) async {
+      if (predictions.length > 0) {
+        await _animationController.animateTo(0.5);
+        setState(() {
+          _placePredictions = predictions;
+        });
+        await _animationController.forward();
+      } else {
+        await _animationController.animateTo(0.5);
+        setState(() {
+          _placePredictions = predictions;
+        });
+        await _animationController.reverse();
+      }
+    }, onError: (err) => print('SEARCH PLACES ERROR: ${err.toString()}'));
+
     super.initState();
+  }
+
+  @override
+  void dispose() { 
+    searchSubscription.cancel();
+    searchSubject.close();
+    super.dispose();
   }
 
   @override
@@ -148,15 +187,27 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
               controller: _textEditingController,
               style:
                   TextStyle(fontSize: MediaQuery.of(context).size.width * 0.04),
-              onChanged: (value) => setState(() => _autocompletePlace(value)),
+              onChanged: (value) => searchSubject.add(value),
             ),
           ),
           Container(width: 15),
-          GestureDetector(
-            child: Icon(this.widget.icon, color: this.widget.iconColor),
-            onTap: () =>
-                widget.onSearch(Place.fromJSON(_selectedPlace, geocode)),
-          )
+          IconButton(
+            icon: Icon(this.widget.icon, color: this.widget.iconColor),
+            onPressed: (_textEditingController.text.isEmpty)
+                ? null
+                : () {
+                    setState(() {
+                      _textEditingController.clear();
+                      _placePredictions = [];
+                    });
+                  },
+            //widget.onSearch(Place.fromJSON(_selectedPlace, geocode)),
+          ),
+          // GestureDetector(
+          //   child: Icon(this.widget.icon, color: this.widget.iconColor),
+          //   onTap: () =>
+          //       widget.onSearch(Place.fromJSON(_selectedPlace, geocode)),
+          // )
         ],
       ),
     );
@@ -203,15 +254,12 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
     );
   }
 
-  // Methods
-  void _autocompletePlace(String input) async {
-    /// Will be called everytime the input changes. Making callbacks to the Places
-    /// Api and giving the user Place options
+  Future<List<dynamic>> _autoCompletePlaces(String input) async {
+    if (input.isEmpty) {
+      return List<dynamic>();
+    }
 
-    if (input.length > 0 && proccess != true) {
-      setState(() {
-        proccess = true;
-      });
+    if (input.length > 0) {
       String url =
           "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$input&key=${widget.apiKey}&language=${widget.language}";
       if (widget.location != null && widget.radius != null) {
@@ -229,26 +277,14 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
         if (error == "This API project is not authorized to use this API.")
           error +=
               " Make sure the Places API is activated on your Google Cloud Platform";
-        setState(() {
-          proccess = false;
-        });
         throw Exception(error);
       } else {
-        final predictions = json["predictions"];
-        await _animationController.animateTo(0.5);
-        setState(() => _placePredictions = predictions);
-        setState(() {
-          proccess = false;
-        });
-        await _animationController.forward();
+        var predictions = [];
+        predictions = json["predictions"];
+        return predictions;
       }
     } else {
-      await _animationController.animateTo(0.5);
-      setState(() => _placePredictions = []);
-      await _animationController.reverse();
-      setState(() {
-        proccess = false;
-      });
+      return List<dynamic>();
     }
   }
 
@@ -258,7 +294,6 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
     // Sets TextField value to be the location selected
     _textEditingController.value = TextEditingValue(
       text: prediction.description,
-      selection: TextSelection.collapsed(offset: prediction.description.length),
     );
 
     // Makes animation
