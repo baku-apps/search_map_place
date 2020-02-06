@@ -110,7 +110,7 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
         .switchMap((t) => (t.length > 0)
             ? Stream.fromFuture(_autoCompletePlaces(t))
             : Stream.value(List<dynamic>()))
-        .listen((predictions) async {
+        .asyncMap((predictions) async {
       if (predictions.length > 0) {
         await _animationController.animateTo(0.5);
         setState(() {
@@ -124,13 +124,14 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
         });
         await _animationController.reverse();
       }
-    }, onError: (err) => print('SEARCH PLACES ERROR: ${err.toString()}'));
+    }).listen((_) {},
+            onError: (err) => print('SEARCH PLACES ERROR: ${err.toString()}'));
 
     super.initState();
   }
 
   @override
-  void dispose() { 
+  void dispose() {
     searchSubscription.cancel();
     searchSubject.close();
     super.dispose();
