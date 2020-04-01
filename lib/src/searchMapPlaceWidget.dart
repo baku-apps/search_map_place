@@ -193,7 +193,10 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
           ),
           Container(width: 15),
           IconButton(
-            icon: Icon(this.widget.icon, color: this.widget.iconColor),
+            icon: Icon(this.widget.icon,
+                color: _placePredictions.length > 0
+                    ? this.widget.iconColor
+                    : Colors.grey),
             onPressed: (_textEditingController.text.isEmpty)
                 ? null
                 : () {
@@ -201,6 +204,10 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget>
                       _textEditingController.clear();
                       _placePredictions = [];
                     });
+
+                    if (widget.onClearSearch != null) {
+                      widget.onClearSearch();
+                    }
                   },
             //widget.onSearch(Place.fromJSON(_selectedPlace, geocode)),
           ),
